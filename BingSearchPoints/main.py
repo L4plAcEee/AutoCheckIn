@@ -2,6 +2,8 @@ import json, os, time, random, logging
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+
 try:
     import dotenv
     dotenv.load_dotenv()
@@ -68,7 +70,10 @@ options.add_argument("--no-sandbox")
 options.add_argument("--disable-gpu")
 options.add_argument("--disable-dev-shm-usage")
 
-driver = webdriver.Chrome(options=options)
+service = Service("/usr/bin/chromedriver")
+options = webdriver.ChromeOptions()
+options.binary_location = "/usr/bin/chromium-browser"
+driver = webdriver.Chrome(service=service, options=options)
 
 try:
     # 先打开一次 Bing（必须先访问才能 add_cookie）
