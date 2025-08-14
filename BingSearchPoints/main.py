@@ -142,18 +142,87 @@ def build_driver():
         logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
         raise
 
-# 从环境读取 cookies（必须为 JSON 数组字符串）
 def load_cookies_from_env():
+    """
+    尝试多种格式解析 BING_COOKIES:
+    1. 严格 JSON （首选）
+    2. Python literal（使用单引号或 Python 列表形式）
+    3. Netscape cookie 文件格式（关键字域值对，多行）
+    4. 简单 name=value;name2=value2 字符串（作为最后手段，转换成单个 cookie）
+    返回 list of dict（Selenium add_cookie 可接受的字典列表）
+    """
     raw = os.environ.get("BING_COOKIES")
     if not raw:
-        raise RuntimeError("环境变量 BING_COOKIES 未设置。请把 cookies.json 的内容（JSON 数组）放到 Secrets/环境变量 BING_COOKIES。")
+        raise RuntimeError("环境变量 BING_COOKIES 未设置。请将 cookies.json 内容放到 Secrets/BING_COOKIES。")
+
+    # 1) 尝试严格 JSON
     try:
-        cookies = json.loads(raw)
-        if not isinstance(cookies, list):
-            raise ValueError("BING_COOKIES 内容应为 JSON 数组（cookie 列表）。")
-        return cookies
-    except Exception as e:
-        raise RuntimeError(f"解析 BING_COOKIES 失败：{e}")
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            # 如果是单个 dict，把它包成列表
+            return [parsed]
+        if isinstance(parsed, list):
+            return parsed
+        raise ValueError("解析后类型不是 list/dict")
+    except Exception:
+        pass
+
+    # 2) 尝试 Python literal（比如使用单引号的列表）
+    try:
+        import ast
+        parsed = ast.literal_eval(raw)
+        if isinstance(parsed, dict):
+            return [parsed]
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+
+    # 3) 尝试解析 Netscape 格式或多行 "name<TAB>value" 等（宽松解析）
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    # 如果每行看起来像 "name<tab>value" 或 "domain\tpath\texpire\tname\tvalue"，尝试抽取 name/value
+    parsed_list = []
+    for ln in lines:
+        # 常见 Netscape: 域、flag、path、expiry、name、value（以空白分隔）
+        parts = ln.split()
+        if len(parts) >= 6:
+            name = parts[-2]
+            value = parts[-1]
+            parsed_list.append({"name": name, "value": value, "domain": ".bing.com", "path": "/"})
+            continue
+        # 如果是简单的 name=value
+        if "=" in ln and ";" not in ln:
+            k, v = ln.split("=", 1)
+            parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
+            continue
+        # 如果是 header-like "Set-Cookie: name=value; Path=/; ..."，抽 name=value
+        if "Set-Cookie:" in ln:
+            try:
+                seg = ln.split("Set-Cookie:", 1)[1].strip()
+                kv = seg.split(";", 1)[0]
+                k, v = kv.split("=", 1)
+                parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
+            except Exception:
+                pass
+
+    if parsed_list:
+        return parsed_list
+
+    # 4) 尝试 name=value; name2=value2 形式（单行多个 cookie）
+    if ";" in raw and "=" in raw:
+        items = [p.strip() for p in raw.split(";") if "=" in p]
+        parsed_list = []
+        for it in items:
+            k, v = it.split("=", 1)
+            parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
+        if parsed_list:
+            return parsed_list
+
+    # 都失败：抛出友好错误并把前 200 字显示（便于调试本地）
+    snippet = raw[:200].replace("\n", "\\n")
+    raise RuntimeError(f"无法解析 BING_COOKIES（支持 JSON/ Python-literal / Netscape / name=value;...）。"
+                       f" 前200字符: {snippet}")
+
 
 def normalize_cookie(c):
     """
