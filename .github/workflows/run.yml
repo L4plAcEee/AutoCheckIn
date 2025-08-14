@@ -1,4 +1,4 @@
-name: Bing Search AutoCheckIn
+name: run-bot
 
 on:
   workflow_dispatch:
