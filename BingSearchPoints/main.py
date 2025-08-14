@@ -10,11 +10,51 @@ except ImportError:
 
 # 搜索关键词
 KEYWORDS = [
-    "best programming languages 2025", "python vs javascript",
-    "machine learning tutorials", "how ChatGPT works",
-    "Bitcoin price prediction", "healthy breakfast ideas",
-    "funny cat videos", "best travel destinations 2025",
-    "zodiac sign personality", "cats vs dogs"
+    # 技术 & 编程
+    "best programming languages 2025", "python vs javascript", "machine learning tutorials",
+    "what is cloud computing", "how to build a website", "C++ smart pointers", "Git vs SVN",
+    "docker vs virtual machine", "REST vs GraphQL", "how does blockchain work", "WebAssembly tutorial",
+
+    # ChatGPT & AI
+    "how ChatGPT works", "latest OpenAI news", "future of artificial intelligence", "AI tools for productivity",
+    "ChatGPT for coding", "DALL·E image generation", "prompt engineering tips",
+
+    # 金融 & 投资
+    "Tesla stock news", "Bitcoin price prediction", "how to invest in ETFs", "stock market news today",
+    "is gold a good investment", "S&P 500 index meaning", "cryptocurrency tax rules",
+
+    # 健康 & 生活方式
+    "healthy breakfast ideas", "how to sleep better", "how to reduce stress", "is coffee healthy",
+    "benefits of drinking water", "best home workouts", "intermittent fasting benefits",
+
+    # 娱乐 & 热门文化
+    "Game of Thrones recap", "best Netflix shows 2025", "funny cat videos", "Marvel vs DC",
+    "upcoming movies 2025", "Oscars best picture winners", "top YouTubers 2025", "Twitch vs Kick",
+
+    # 教育 & 学习
+    "top universities in the world", "best online courses", "how to learn English fast",
+    "study tips for exams", "what is the GRE test", "is SAT required in 2025",
+
+    # 旅游 & 地理
+    "best travel destinations 2025", "how to get cheap flights", "top 10 cities to live in",
+    "weather in Tokyo", "hiking trails near me", "digital nomad lifestyle",
+
+    # 社会热点 & 新闻
+    "Ukraine conflict explained", "US presidential election", "global warming facts",
+    "climate change solutions", "latest tech news", "AI replacing jobs", "privacy concerns with smartphones",
+
+    # 商业 & 创业
+    "how to start a business", "make money online", "passive income ideas", "top e-commerce platforms",
+    "dropshipping vs Amazon FBA", "remote work trends", "freelancing vs full-time job",
+
+    # 游戏 & 电竞
+    "best PC games 2025", "Valorant tips and tricks", "how to get better at Fortnite",
+    "Steam summer sale", "Nintendo Switch 2 rumors", "top esports teams",
+
+    # 杂项 & 轻松话题
+    "zodiac sign personality", "meaning of dreams", "fun trivia questions", "weird facts about space",
+    "does pineapple belong on pizza", "best memes of 2025", "how to cook pasta",
+    "coffee vs tea", "cats vs dogs", "funny dad jokes", "TikTok trends 2025"
 ]
 SEARCH_TIMES = 40
 WAIT_TIME = (2, 5)

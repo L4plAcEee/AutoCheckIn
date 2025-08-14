@@ -17,6 +17,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Inject environment variables
+        run: |
+          echo "BING_COOKIES=${{ secrets.BING_COOKIES }}" >> $GITHUB_ENV
+
       - name: Install Chrome & Chromedriver
         run: |
           sudo apt-get update
