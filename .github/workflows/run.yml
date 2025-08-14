@@ -1,0 +1,36 @@
+name: run
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies and browser
+        run: |
+          sudo apt-get update
+          # 两种包名兼容：有些 runner 使用 chromium-browser / 有些使用 chromium
+          sudo apt-get install -y chromium-browser chromium-chromedriver || sudo apt-get install -y chromium chromium-chromedriver
+          pip install -r requirements.txt || pip install selenium
+          echo "浏览器位置："
+          which chromium-browser || which chromium || which google-chrome || which google-chrome-stable || true
+          echo "chromedriver 位置："
+          which chromedriver || which chromium-chromedriver || true
+
+      - name: Run BingSearchPoints
+        env:
+          # 指定 CHROME_BIN 与 CHROMEDRIVER_PATH，脚本会优先使用这些
+          CHROME_BIN: /usr/bin/chromium-browser
+          CHROMEDRIVER_PATH: /usr/bin/chromedriver
+          BING_COOKIES: ${{ secrets.BING_COOKIES }}
+        run: |
+          python BingSearchPoints/main.py

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import time
 import random
 import logging
@@ -71,6 +72,76 @@ KEYWORDS = [
 SEARCH_TIMES = 40
 WAIT_TIME = (2, 5)
 
+def find_browser_binary():
+    # 优先读取环境变量
+    candidates = [
+        os.environ.get("CHROME_BIN"),
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+    ]
+    for p in candidates:
+        if p and os.path.exists(p):
+            logging.info(f"找到浏览器二进制: {p}")
+            return p
+    # 再尝试 PATH 查找
+    for name in ("chromium-browser", "chromium", "google-chrome-stable", "google-chrome"):
+        p = shutil.which(name)
+        if p:
+            logging.info(f"在 PATH 中找到浏览器二进制: {p}")
+            return p
+    return None
+
+def find_chromedriver():
+    # 优先环境变量，再常见路径，再 PATH
+    candidates = [
+        os.environ.get("CHROMEDRIVER_PATH"),
+        "/usr/bin/chromedriver",
+        "/usr/local/bin/chromedriver",
+    ]
+    for p in candidates:
+        if p and os.path.exists(p):
+            logging.info(f"找到 chromedriver: {p}")
+            return p
+    p = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
+    if p:
+        logging.info(f"在 PATH 中找到 chromedriver: {p}")
+        return p
+    return None
+
+def build_driver():
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1366,768")
+    # 尝试找到浏览器二进制
+    bin_path = find_browser_binary()
+    if bin_path:
+        options.binary_location = bin_path
+    else:
+        raise RuntimeError(
+            "未找到浏览器二进制（Chrome/Chromium）。"
+            " 在 CI 上请先安装 chromium 或 google-chrome，并设置 CHROME_BIN 指向二进制。"
+        )
+
+    chromedriver_path = find_chromedriver()
+    service = Service(chromedriver_path) if chromedriver_path else None
+    if not chromedriver_path:
+        logging.warning("未找到 chromedriver，可让 Selenium 在 PATH 中查找或在 workflow 中安装 chromedriver。")
+
+    try:
+        if service:
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            driver = webdriver.Chrome(options=options)
+        return driver
+    except WebDriverException as e:
+        logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
+        raise
+
 # 从环境读取 cookies（必须为 JSON 数组字符串）
 def load_cookies_from_env():
     raw = os.environ.get("BING_COOKIES")
@@ -127,40 +198,6 @@ def normalize_cookie(c):
 
     return cookie
 
-def build_driver():
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--window-size=1366,768")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    # 可指定二进制（在某些 runner 上需要）
-    bin_path = os.environ.get("CHROME_BIN") or "/usr/bin/chromium-browser"
-    if os.path.exists(bin_path):
-        options.binary_location = bin_path
-    else:
-        logging.debug(f"未找到指定浏览器二进制: {bin_path}，将使用系统默认浏览器")
-
-    # chromedriver 路径优先从环境或常见位置读取
-    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH") or "/usr/bin/chromedriver"
-    service = None
-    if os.path.exists(chromedriver_path):
-        service = Service(chromedriver_path)
-        logging.debug(f"使用 chromedriver: {chromedriver_path}")
-    else:
-        logging.debug("未在 /usr/bin/chromedriver 找到驱动，webdriver 将尝试在 PATH 中查找 chromedriver（确保 chromedriver 在 PATH 中）")
-
-    try:
-        if service:
-            driver = webdriver.Chrome(service=service, options=options)
-        else:
-            driver = webdriver.Chrome(options=options)  # 让 selenium 自行在 PATH 中寻找
-        return driver
-    except WebDriverException as e:
-        logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
-        raise
 
 def main():
     try:
