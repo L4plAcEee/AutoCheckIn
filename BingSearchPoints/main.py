@@ -18,7 +18,6 @@ try:
 except Exception:
     logging.debug("未安装或无法加载 python-dotenv，跳过 .env 加载")
 
-# 日志配置
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # 搜索关键词
@@ -69,11 +68,11 @@ KEYWORDS = [
     "does pineapple belong on pizza", "best memes of 2025", "how to cook pasta",
     "coffee vs tea", "cats vs dogs", "funny dad jokes", "TikTok trends 2025"
 ]
+
 SEARCH_TIMES = 40
 WAIT_TIME = (2, 5)
 
 def find_browser_binary():
-    # 优先读取环境变量
     candidates = [
         os.environ.get("CHROME_BIN"),
         "/usr/bin/chromium-browser",
@@ -85,7 +84,6 @@ def find_browser_binary():
         if p and os.path.exists(p):
             logging.info(f"找到浏览器二进制: {p}")
             return p
-    # 再尝试 PATH 查找
     for name in ("chromium-browser", "chromium", "google-chrome-stable", "google-chrome"):
         p = shutil.which(name)
         if p:
@@ -94,7 +92,6 @@ def find_browser_binary():
     return None
 
 def find_chromedriver():
-    # 优先环境变量，再常见路径，再 PATH
     candidates = [
         os.environ.get("CHROMEDRIVER_PATH"),
         "/usr/bin/chromedriver",
@@ -117,156 +114,65 @@ def build_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1366,768")
-    # 尝试找到浏览器二进制
     bin_path = find_browser_binary()
     if bin_path:
         options.binary_location = bin_path
     else:
-        raise RuntimeError(
-            "未找到浏览器二进制（Chrome/Chromium）。"
-            " 在 CI 上请先安装 chromium 或 google-chrome，并设置 CHROME_BIN 指向二进制。"
-        )
+        raise RuntimeError("未找到浏览器二进制，请设置 CHROME_BIN 或安装 Chromium/Chrome。")
 
     chromedriver_path = find_chromedriver()
     service = Service(chromedriver_path) if chromedriver_path else None
-    if not chromedriver_path:
-        logging.warning("未找到 chromedriver，可让 Selenium 在 PATH 中查找或在 workflow 中安装 chromedriver。")
-
     try:
         if service:
             driver = webdriver.Chrome(service=service, options=options)
         else:
             driver = webdriver.Chrome(options=options)
         return driver
-    except WebDriverException as e:
+    except WebDriverException:
         logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
         raise
 
 def load_cookies_from_env():
-    """
-    尝试多种格式解析 BING_COOKIES:
-    1. 严格 JSON （首选）
-    2. Python literal（使用单引号或 Python 列表形式）
-    3. Netscape cookie 文件格式（关键字域值对，多行）
-    4. 简单 name=value;name2=value2 字符串（作为最后手段，转换成单个 cookie）
-    返回 list of dict（Selenium add_cookie 可接受的字典列表）
-    """
     raw = os.environ.get("BING_COOKIES")
     if not raw:
-        raise RuntimeError("环境变量 BING_COOKIES 未设置。请将 cookies.json 内容放到 Secrets/BING_COOKIES。")
+        raise RuntimeError("环境变量 BING_COOKIES 未设置。")
 
-    # 1) 尝试严格 JSON
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
-            # 如果是单个 dict，把它包成列表
             return [parsed]
         if isinstance(parsed, list):
             return parsed
         raise ValueError("解析后类型不是 list/dict")
-    except Exception:
-        pass
-
-    # 2) 尝试 Python literal（比如使用单引号的列表）
-    try:
-        import ast
-        parsed = ast.literal_eval(raw)
-        if isinstance(parsed, dict):
-            return [parsed]
-        if isinstance(parsed, list):
-            return parsed
-    except Exception:
-        pass
-
-    # 3) 尝试解析 Netscape 格式或多行 "name<TAB>value" 等（宽松解析）
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-    # 如果每行看起来像 "name<tab>value" 或 "domain\tpath\texpire\tname\tvalue"，尝试抽取 name/value
-    parsed_list = []
-    for ln in lines:
-        # 常见 Netscape: 域、flag、path、expiry、name、value（以空白分隔）
-        parts = ln.split()
-        if len(parts) >= 6:
-            name = parts[-2]
-            value = parts[-1]
-            parsed_list.append({"name": name, "value": value, "domain": ".bing.com", "path": "/"})
-            continue
-        # 如果是简单的 name=value
-        if "=" in ln and ";" not in ln:
-            k, v = ln.split("=", 1)
-            parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
-            continue
-        # 如果是 header-like "Set-Cookie: name=value; Path=/; ..."，抽 name=value
-        if "Set-Cookie:" in ln:
-            try:
-                seg = ln.split("Set-Cookie:", 1)[1].strip()
-                kv = seg.split(";", 1)[0]
-                k, v = kv.split("=", 1)
-                parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
-            except Exception:
-                pass
-
-    if parsed_list:
-        return parsed_list
-
-    # 4) 尝试 name=value; name2=value2 形式（单行多个 cookie）
-    if ";" in raw and "=" in raw:
-        items = [p.strip() for p in raw.split(";") if "=" in p]
-        parsed_list = []
-        for it in items:
-            k, v = it.split("=", 1)
-            parsed_list.append({"name": k.strip(), "value": v.strip(), "domain": ".bing.com", "path": "/"})
-        if parsed_list:
-            return parsed_list
-
-    # 都失败：抛出友好错误并把前 200 字显示（便于调试本地）
-    snippet = raw[:200].replace("\n", "\\n")
-    raise RuntimeError(f"无法解析 BING_COOKIES（支持 JSON/ Python-literal / Netscape / name=value;...）。"
-                       f" 前200字符: {snippet}")
-
+    except Exception as e:
+        snippet = raw[:200].replace("\n", "\\n")
+        raise RuntimeError(f"无法解析 BING_COOKIES（必须为 JSON 格式）。前200字符: {snippet}") from e
 
 def normalize_cookie(c):
-    """
-    兼容各种浏览器导出格式，返回 Selenium 可接受的 cookie dict。
-    保留字段： name, value, domain, path, secure, httpOnly, expiry
-    """
-    cookie = dict(c)  # shallow copy
-    # 允许不同大小写导出
+    cookie = dict(c)
     if "name" not in cookie and "Name" in cookie:
         cookie["name"] = cookie.pop("Name")
     if "value" not in cookie and "Value" in cookie:
         cookie["value"] = cookie.pop("Value")
-
     if "name" not in cookie or "value" not in cookie:
         raise ValueError("cookie 缺少 name 或 value 字段")
-
-    # sameSite: 如果为 None 或 非法值，删除该字段
     if "sameSite" in cookie:
-        v = cookie.get("sameSite")
-        if v is None or (v not in ["Strict", "Lax", "None"]):
+        if cookie.get("sameSite") not in ["Strict", "Lax", "None"]:
             cookie.pop("sameSite", None)
-
-    # expiry 兼容
     if "expiry" not in cookie:
-        # 常见字段名: expirationDate / expires
         for k in ("expirationDate", "expires"):
             if k in cookie:
                 try:
                     cookie["expiry"] = int(float(cookie.pop(k)))
                 except Exception:
                     cookie.pop(k, None)
-
-    # domain / path fallback
     cookie.setdefault("domain", ".bing.com")
     cookie.setdefault("path", "/")
-
-    # 删除不被 selenium 支持的额外字段
     allowed = {"name", "value", "path", "domain", "secure", "httpOnly", "expiry"}
     for k in list(cookie.keys()):
         if k not in allowed:
             cookie.pop(k, None)
-
     return cookie
-
 
 def main():
     try:
@@ -275,7 +181,6 @@ def main():
         logging.error(e)
         return
 
-    # 规范化 cookies
     normalized = []
     for c in raw_cookies:
         try:
@@ -289,12 +194,10 @@ def main():
         driver.get("https://www.bing.com")
         time.sleep(1)
 
-        # 注入 cookie（先访问域以便 add_cookie 生效）
         for ck in normalized:
             try:
                 driver.add_cookie(ck)
-            except AssertionError as ae:
-                # Selenium 对 sameSite/expiry 有严格断言，尝试删除并重试
+            except AssertionError:
                 ck2 = dict(ck)
                 ck2.pop("expiry", None)
                 try:
@@ -307,7 +210,6 @@ def main():
         driver.refresh()
         time.sleep(2)
 
-        # 执行搜索任务
         for i in range(SEARCH_TIMES):
             kw = random.choice(KEYWORDS)
             logging.info(f"[{i+1}/{SEARCH_TIMES}] Searching: {kw}")

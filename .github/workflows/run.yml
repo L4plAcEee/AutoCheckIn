@@ -1,36 +1,36 @@
-name: run
+name: Bing Search AutoCheckIn
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'  # 每天 UTC 12:00 执行
 
 jobs:
-  run-bot:
+  bing-search:
     runs-on: ubuntu-latest
+    env:
+      BING_COOKIES: ${{ secrets.BING_COOKIES }}  # 原始 JSON cookie
+      CHROME_BIN: /usr/bin/chromium-browser
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: 3.11
 
-      - name: Install dependencies and browser
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          # 两种包名兼容：有些 runner 使用 chromium-browser / 有些使用 chromium
-          sudo apt-get install -y chromium-browser chromium-chromedriver || sudo apt-get install -y chromium chromium-chromedriver
-          pip install -r requirements.txt || pip install selenium
-          echo "浏览器位置："
-          which chromium-browser || which chromium || which google-chrome || which google-chrome-stable || true
-          echo "chromedriver 位置："
-          which chromedriver || which chromium-chromedriver || true
+          python -m pip install --upgrade pip
+          pip install selenium python-dotenv
+
+      - name: Install Chromium & Chromedriver
+        run: |
+          sudo apt update
+          sudo apt install -y chromium-browser chromium-chromedriver
 
       - name: Run BingSearchPoints
-        env:
-          # 指定 CHROME_BIN 与 CHROMEDRIVER_PATH，脚本会优先使用这些
-          CHROME_BIN: /usr/bin/chromium-browser
-          CHROMEDRIVER_PATH: /usr/bin/chromedriver
-          BING_COOKIES: ${{ secrets.BING_COOKIES }}
-        run: |
-          python BingSearchPoints/main.py
+        run: python BingSearchPoints/main.py
