@@ -1,14 +1,24 @@
-import json, os, time, random, logging
+import json
+import os
+import time
+import random
+import logging
+import traceback
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import WebDriverException
 
 try:
     import dotenv
     dotenv.load_dotenv()
-except ImportError:
-    logging.warning("未安装 python-dotenv，跳过加载 .env 文件")
+except Exception:
+    logging.debug("未安装或无法加载 python-dotenv，跳过 .env 加载")
+
+# 日志配置
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # 搜索关键词
 KEYWORDS = [
@@ -61,56 +71,164 @@ KEYWORDS = [
 SEARCH_TIMES = 40
 WAIT_TIME = (2, 5)
 
-# 从 GitHub Secrets 读取 cookie
-cookies = json.loads(os.environ["BING_COOKIES"])
+# 从环境读取 cookies（必须为 JSON 数组字符串）
+def load_cookies_from_env():
+    raw = os.environ.get("BING_COOKIES")
+    if not raw:
+        raise RuntimeError("环境变量 BING_COOKIES 未设置。请把 cookies.json 的内容（JSON 数组）放到 Secrets/环境变量 BING_COOKIES。")
+    try:
+        cookies = json.loads(raw)
+        if not isinstance(cookies, list):
+            raise ValueError("BING_COOKIES 内容应为 JSON 数组（cookie 列表）。")
+        return cookies
+    except Exception as e:
+        raise RuntimeError(f"解析 BING_COOKIES 失败：{e}")
 
-options = Options()
-options.add_argument("--headless=new")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-dev-shm-usage")
+def normalize_cookie(c):
+    """
+    兼容各种浏览器导出格式，返回 Selenium 可接受的 cookie dict。
+    保留字段： name, value, domain, path, secure, httpOnly, expiry
+    """
+    cookie = dict(c)  # shallow copy
+    # 允许不同大小写导出
+    if "name" not in cookie and "Name" in cookie:
+        cookie["name"] = cookie.pop("Name")
+    if "value" not in cookie and "Value" in cookie:
+        cookie["value"] = cookie.pop("Value")
 
-service = Service("/usr/bin/chromedriver")
-options = webdriver.ChromeOptions()
-options.binary_location = "/usr/bin/chromium-browser"
-driver = webdriver.Chrome(service=service, options=options)
+    if "name" not in cookie or "value" not in cookie:
+        raise ValueError("cookie 缺少 name 或 value 字段")
 
-try:
-    # 先打开一次 Bing（必须先访问才能 add_cookie）
-    driver.get("https://www.bing.com")
-    time.sleep(1)
+    # sameSite: 如果为 None 或 非法值，删除该字段
+    if "sameSite" in cookie:
+        v = cookie.get("sameSite")
+        if v is None or (v not in ["Strict", "Lax", "None"]):
+            cookie.pop("sameSite", None)
 
-    # 注入 cookie
-    for cookie in cookies:
-        # 如果 sameSite 值不在允许列表，直接删除这个字段
-        if "sameSite" in cookie and cookie["sameSite"] not in ["Strict", "Lax", "None"]:
-            cookie.pop("sameSite")
+    # expiry 兼容
+    if "expiry" not in cookie:
+        # 常见字段名: expirationDate / expires
+        for k in ("expirationDate", "expires"):
+            if k in cookie:
+                try:
+                    cookie["expiry"] = int(float(cookie.pop(k)))
+                except Exception:
+                    cookie.pop(k, None)
 
-        # Selenium 要求有 domain/path
-        if "domain" not in cookie:
-            cookie["domain"] = ".bing.com"
-        if "path" not in cookie:
-            cookie["path"] = "/"
+    # domain / path fallback
+    cookie.setdefault("domain", ".bing.com")
+    cookie.setdefault("path", "/")
 
-        driver.add_cookie(cookie)
+    # 删除不被 selenium 支持的额外字段
+    allowed = {"name", "value", "path", "domain", "secure", "httpOnly", "expiry"}
+    for k in list(cookie.keys()):
+        if k not in allowed:
+            cookie.pop(k, None)
 
+    return cookie
 
-    driver.refresh()
-    time.sleep(2)
+def build_driver():
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--window-size=1366,768")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    # 可指定二进制（在某些 runner 上需要）
+    bin_path = os.environ.get("CHROME_BIN") or "/usr/bin/chromium-browser"
+    if os.path.exists(bin_path):
+        options.binary_location = bin_path
+    else:
+        logging.debug(f"未找到指定浏览器二进制: {bin_path}，将使用系统默认浏览器")
 
-    # 开始搜索
-    for i in range(SEARCH_TIMES):
-        kw = random.choice(KEYWORDS)
-        logging.info(f"[{i+1}/{SEARCH_TIMES}] Searching: {kw}")
+    # chromedriver 路径优先从环境或常见位置读取
+    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH") or "/usr/bin/chromedriver"
+    service = None
+    if os.path.exists(chromedriver_path):
+        service = Service(chromedriver_path)
+        logging.debug(f"使用 chromedriver: {chromedriver_path}")
+    else:
+        logging.debug("未在 /usr/bin/chromedriver 找到驱动，webdriver 将尝试在 PATH 中查找 chromedriver（确保 chromedriver 在 PATH 中）")
+
+    try:
+        if service:
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            driver = webdriver.Chrome(options=options)  # 让 selenium 自行在 PATH 中寻找
+        return driver
+    except WebDriverException as e:
+        logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
+        raise
+
+def main():
+    try:
+        raw_cookies = load_cookies_from_env()
+    except Exception as e:
+        logging.error(e)
+        return
+
+    # 规范化 cookies
+    normalized = []
+    for c in raw_cookies:
         try:
-            box = driver.find_element(By.NAME, "q")
-            box.clear()
-            box.send_keys(kw)
-            box.submit()
+            normalized.append(normalize_cookie(c))
         except Exception as e:
-            logging.warning(f"搜索失败：{e}")
-            driver.get("https://www.bing.com")
-        time.sleep(random.uniform(*WAIT_TIME))
+            logging.warning(f"忽略无法解析的 cookie: {e}")
 
-finally:
-    driver.quit()
+    driver = None
+    try:
+        driver = build_driver()
+        driver.get("https://www.bing.com")
+        time.sleep(1)
+
+        # 注入 cookie（先访问域以便 add_cookie 生效）
+        for ck in normalized:
+            try:
+                driver.add_cookie(ck)
+            except AssertionError as ae:
+                # Selenium 对 sameSite/expiry 有严格断言，尝试删除并重试
+                ck2 = dict(ck)
+                ck2.pop("expiry", None)
+                try:
+                    driver.add_cookie(ck2)
+                except Exception as e2:
+                    logging.warning(f"添加 cookie 失败，跳过：{e2}")
+            except Exception as e:
+                logging.warning(f"添加 cookie 失败，跳过：{e}")
+
+        driver.refresh()
+        time.sleep(2)
+
+        # 执行搜索任务
+        for i in range(SEARCH_TIMES):
+            kw = random.choice(KEYWORDS)
+            logging.info(f"[{i+1}/{SEARCH_TIMES}] Searching: {kw}")
+            try:
+                box = driver.find_element(By.NAME, "q")
+                box.clear()
+                box.send_keys(kw)
+                box.submit()
+            except Exception as e:
+                logging.warning(f"搜索失败：{e}")
+                try:
+                    driver.get("https://www.bing.com")
+                except Exception:
+                    pass
+            time.sleep(random.uniform(*WAIT_TIME))
+
+        logging.info("任务完成。")
+
+    except Exception as e:
+        logging.error("运行出错：%s", e)
+        traceback.print_exc()
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+if __name__ == "__main__":
+    main()
