@@ -39,4 +39,4 @@ jobs:
           add: "requirements.txt"
           push: true
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}   # 把 PAT 映射给 GITHUB_TOKEN，供该 action 使用
