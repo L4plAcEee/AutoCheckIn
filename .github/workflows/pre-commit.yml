@@ -47,7 +47,6 @@ jobs:
           fi
 
           echo "==== try authenticated ls-remote ===="
-          # 下面这个会用到 GITHUB_TOKEN（掩码显示），但不会 push
           git ls-remote https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }} HEAD || true
         shell: bash
             
@@ -60,4 +59,4 @@ jobs:
           add: "requirements.txt"
           push: true
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}   # 把 PAT 映射给 GITHUB_TOKEN，供该 action 使用
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
