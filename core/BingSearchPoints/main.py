@@ -6,19 +6,25 @@ import random
 import logging
 import traceback
 
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
 
+from core.utility.server_chan import server_chan_push_error, server_chan_push_normal
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
 try:
     import dotenv
     dotenv.load_dotenv()
 except Exception:
-    logging.debug("未安装或无法加载 python-dotenv，跳过 .env 加载")
+    logger.debug("未安装或无法加载 python-dotenv，跳过 .env 加载")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # 搜索关键词
 KEYWORDS = [
@@ -82,12 +88,12 @@ def find_browser_binary():
     ]
     for p in candidates:
         if p and os.path.exists(p):
-            logging.info(f"找到浏览器二进制: {p}")
+            logger.info(f"找到浏览器二进制: {p}")
             return p
     for name in ("chromium-browser", "chromium", "google-chrome-stable", "google-chrome"):
         p = shutil.which(name)
         if p:
-            logging.info(f"在 PATH 中找到浏览器二进制: {p}")
+            logger.info(f"在 PATH 中找到浏览器二进制: {p}")
             return p
     return None
 
@@ -99,11 +105,11 @@ def find_chromedriver():
     ]
     for p in candidates:
         if p and os.path.exists(p):
-            logging.info(f"找到 chromedriver: {p}")
+            logger.info(f"找到 chromedriver: {p}")
             return p
     p = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
     if p:
-        logging.info(f"在 PATH 中找到 chromedriver: {p}")
+        logger.info(f"在 PATH 中找到 chromedriver: {p}")
         return p
     return None
 
@@ -129,7 +135,7 @@ def build_driver():
             driver = webdriver.Chrome(options=options)
         return driver
     except WebDriverException:
-        logging.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
+        logger.error("创建 webdriver 失败，请检查 chrome/chromedriver 是否安装且版本匹配。")
         raise
 
 def load_cookies_from_env():
@@ -178,7 +184,8 @@ def main():
     try:
         raw_cookies = load_cookies_from_env()
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
+
         return
 
     normalized = []
@@ -186,7 +193,8 @@ def main():
         try:
             normalized.append(normalize_cookie(c))
         except Exception as e:
-            logging.warning(f"忽略无法解析的 cookie: {e}")
+            logger.warning(f"忽略无法解析的 cookie: {e}")
+            server_chan_push_error(f"{e}")
 
     driver = None
     try:
@@ -203,34 +211,37 @@ def main():
                 try:
                     driver.add_cookie(ck2)
                 except Exception as e2:
-                    logging.warning(f"添加 cookie 失败，跳过：{e2}")
+                    logger.warning(f"添加 cookie 失败，跳过：{e2}")
+                    server_chan_push_error(f"{e2}")
             except Exception as e:
-                logging.warning(f"添加 cookie 失败，跳过：{e}")
+                logger.warning(f"添加 cookie 失败，跳过：{e}")
+                server_chan_push_error(f"{e}")
 
         driver.refresh()
         time.sleep(2)
 
         for i in range(SEARCH_TIMES):
             kw = random.choice(KEYWORDS)
-            logging.info(f"[{i+1}/{SEARCH_TIMES}] Searching: {kw}")
+            logger.info(f"[{i+1}/{SEARCH_TIMES}] Searching: {kw}")
             try:
                 box = driver.find_element(By.NAME, "q")
                 box.clear()
                 box.send_keys(kw)
                 box.submit()
             except Exception as e:
-                logging.warning(f"搜索失败：{e}")
+                logger.warning(f"搜索失败：{e}")
                 try:
                     driver.get("https://www.bing.com")
                 except Exception:
                     pass
             time.sleep(random.uniform(*WAIT_TIME))
 
-        logging.info("任务完成。")
+        logger.info("任务完成。")
 
     except Exception as e:
-        logging.error("运行出错：%s", e)
+        logger.error("运行出错：%s", e)
         traceback.print_exc()
+        server_chan_push_error(f"运行出错：{e}")
     finally:
         if driver:
             try:

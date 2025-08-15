@@ -1,0 +1,40 @@
+name: pre-commit-bot
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '*'
+  workflow_dispatch:
+
+jobs:
+  update-reqs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install project dependencies
+        run: |
+          pip install -r requirements.txt || true
+          pip install pipreqs
+
+      - name: Generate requirements.txt
+        run: |
+          pipreqs . --force  # 基于代码分析依赖生成 requirements.txt
+
+      - name: Commit and push changes
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions
+          author_email: github-actions@github.com
+          message: "chore: auto update requirements.txt"
+          add: "requirements.txt"

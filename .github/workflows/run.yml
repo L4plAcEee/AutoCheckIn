@@ -9,7 +9,7 @@ jobs:
   bing-search:
     runs-on: ubuntu-latest
     env:
-      BING_COOKIES: ${{ secrets.BING_COOKIES }}  # 原始 JSON cookie
+      BING_COOKIES: ${{ secrets.BING_COOKIES }}
       CHROME_BIN: /usr/bin/chromium-browser
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
 
