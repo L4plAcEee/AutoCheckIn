@@ -31,25 +31,25 @@ jobs:
         run: pipreqs . --force --ignore __pycache__
         
       - name: Debug auth & git (safe)
-          run: |
-            echo "==== remote ===="
-            git remote -v || true
+        run: |
+          echo "==== remote ===="
+          git remote -v || true
 
-            echo "==== git user ===="
-            git config --get user.name || true
-            git config --get user.email || true
+          echo "==== git user ===="
+          git config --get user.name || true
+          git config --get user.email || true
 
-            echo "==== GITHUB_TOKEN presence ===="
-            if [ -z "$GITHUB_TOKEN" ]; then
-              echo "GITHUB_TOKEN is EMPTY"
-            else
-              echo "GITHUB_TOKEN length=$(echo -n $GITHUB_TOKEN | wc -c)"
-            fi
+          echo "==== GITHUB_TOKEN presence ===="
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "GITHUB_TOKEN is EMPTY"
+          else
+            echo "GITHUB_TOKEN length=$(echo -n $GITHUB_TOKEN | wc -c)"
+          fi
 
-            echo "==== try authenticated ls-remote ===="
-            # 下面这个会用到 GITHUB_TOKEN（掩码显示），但不会 push
-            git ls-remote https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }} HEAD || true
-          shell: bash
+          echo "==== try authenticated ls-remote ===="
+          # 下面这个会用到 GITHUB_TOKEN（掩码显示），但不会 push
+          git ls-remote https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }} HEAD || true
+        shell: bash
             
       - name: Commit and push changes
         uses: EndBug/add-and-commit@v9
