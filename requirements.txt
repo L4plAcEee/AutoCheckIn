@@ -1,0 +1,4 @@
+python-dotenv==1.1.1
+Requests==2.32.4
+selenium==4.35.0
+serverchan_sdk==1.0.6
