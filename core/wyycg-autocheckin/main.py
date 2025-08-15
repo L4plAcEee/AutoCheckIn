@@ -1,7 +1,7 @@
 import os, json, logging
 import requests as r
 
-from core.utility.server_chan import server_chan_push_normal
+from core.utility.server_chan import server_chan_push_error
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ if __name__ == "__main__":
     网易云游戏自动签到脚本: https://github.com/GamerNoTitle/wyycg-autocheckin \n
     '''.format(len(success), len(failure), len(cookies), outputmsg)
 
-    server_chan_push_normal(scinfomsg)
     if (len(failure) != 0):
-        raise ScriptRunError
+        logger.warning(scinfomsg)
+        server_chan_push_error(scinfomsg)
+        # raise ScriptRunError

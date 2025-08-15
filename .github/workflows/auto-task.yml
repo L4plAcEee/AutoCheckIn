@@ -3,10 +3,10 @@ name: auto-task-bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 12 * * *'  # 每天 UTC 12:00 执行
+    - cron: '0 0 * * *'
 
 jobs:
-  bing-search:
+  daily-checkin:
     runs-on: ubuntu-latest
     env:
       BING_COOKIES: ${{ secrets.BING_COOKIES }}
