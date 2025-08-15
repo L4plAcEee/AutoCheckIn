@@ -36,4 +36,4 @@ jobs:
         run: python -m core.BingSearchPoints.main
 
       - name: Run wyycg-autocheckin
-        run: python -m core.wyycg_autocheckin.main
+        run: python -m core.wyycg-autocheckin.main
