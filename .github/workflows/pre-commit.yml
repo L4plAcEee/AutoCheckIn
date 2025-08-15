@@ -11,6 +11,8 @@ on:
 jobs:
   update-reqs:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,5 +60,3 @@ jobs:
           message: "chore: auto update requirements.txt"
           add: "requirements.txt"
           push: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
